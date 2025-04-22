@@ -1,186 +1,84 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
+	"github.com/b1tray3r/isitstreamablebot/internal"
+	"github.com/b1tray3r/isitstreamablebot/internal/twitch"
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
-	"github.com/olekukonko/tablewriter"
-	"github.com/urfave/cli/v3"
 	"github.com/zmb3/spotify/v2"
-	spotifyauth "github.com/zmb3/spotify/v2/auth"
 )
-
-// redirectURI is the OAuth redirect URI for the application.
-// You must register an application at Spotify's developer portal
-// and enter this value.
-const redirectURI = "http://127.0.0.1:8080/callback"
 
 var (
-	auth  = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate))
-	ch    = make(chan *spotify.Client)
-	state = "abc123"
+	loglevel = slog.LevelVar{}
 )
 
-// PayloadData represents the structure of the payload
-type PayloadData struct {
-	OperationName string     `json:"operationName"`
-	Variables     Variables  `json:"variables"`
-	Extensions    Extensions `json:"extensions"`
-}
-
-// Variables represents the variables in the payload
-type Variables struct {
-	SearchInput SearchInput `json:"searchInput"`
-}
-
-// SearchInput represents the search input details
-type SearchInput struct {
-	SearchType string `json:"searchType"`
-	SortBy     string `json:"sortBy"`
-	Term       string `json:"term"`
-}
-
-// Extensions represents the extensions in the payload
-type Extensions struct {
-	PersistedQuery PersistedQuery `json:"persistedQuery"`
-}
-
-// PersistedQuery represents the persisted query details
-type PersistedQuery struct {
-	Version    int    `json:"version"`
-	Sha256Hash string `json:"sha256Hash"`
-}
-
-type TwitchArtist struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	BlockListState string `json:"blockListState"`
-}
-
-type TwitchSongNode struct {
-	Cursor string `json:"cursor"`
-	Node   struct {
-		ID             string         `json:"id"`
-		Title          string         `json:"title"`
-		Artists        []TwitchArtist `json:"artists"`
-		Labels         []string       `json:"labels"`
-		IsBlockedTrack bool           `json:"isBlockedTrack"`
-		Genres         []string       `json:"genres"`
-		Duration       float64        `json:"duration"`
-	}
-}
-
-type TwitchResponse struct {
-	Data struct {
-		SearchDJCatalog struct {
-			CatalogLastUpdatedAt string           `json:"catalogLastUpdatedAt"`
-			Edges                []TwitchSongNode `json:"edges"`
-		} `json:"searchDJCatalog"`
-	} `json:"data"`
-}
-
-func sendRequest(songTitle string) ([]TwitchResponse, error) {
-	url := "https://gql.twitch.tv/gql"
-
-	// Create the payload
-	payloadData := []PayloadData{
-		{
-			OperationName: "DJMusicCatalogSearchQuery",
-			Variables: Variables{
-				SearchInput: SearchInput{
-					SearchType: "TRACK",
-					SortBy:     "BEST_MATCH",
-					Term:       songTitle,
-				},
-			},
-			Extensions: Extensions{
-				PersistedQuery: PersistedQuery{
-					Version:    1,
-					Sha256Hash: "bf84de47edcd146c548e6fc10664441cf32940bab09af63a23f31bedc32bda2c",
-				},
-			},
-		},
-	}
-
-	payload, err := json.Marshal(payloadData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal payload: %v", err)
-	}
-
-	// Create the HTTP request
-	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
-
-	// Add headers
-	req.Header.Add("cache-control", "no-cache")
-	req.Header.Add("Client-ID", os.Getenv("TWITCH_CLIENT_ID"))
-	req.Header.Add("Content-Type", "application/json")
-
-	// Send the request
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %v", err)
-	}
-	defer res.Body.Close()
-
-	var response []TwitchResponse
-	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %v", err)
-	}
-
-	return response, nil
-}
-
-func renderTable(edges []TwitchSongNode) {
-	// Prepare data for the table
-	tableData := [][]string{}
-	for _, edge := range edges {
-		song := edge.Node
-		status := "Allowed"
-		if song.IsBlockedTrack {
-			status = "Blocked"
-		}
-		artists := []string{}
-		for _, artist := range song.Artists {
-			artists = append(artists, artist.Name)
-		}
-		tableData = append(tableData, []string{
-			song.ID,
-			song.Title,
-			strings.Join(artists, ", "),
-			strings.Join(song.Labels, ", "),
-			strings.Join(song.Genres, ", "),
-			fmt.Sprintf("%.2f", song.Duration),
-			status,
-		})
-	}
-
-	// Render the table
-	table := tablewriter.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Title", "ID", "Artists", "Labels", "Genres", "Duration (s)", "Streamable"})
-	table.AppendBulk(tableData)
-	table.Render()
-}
-
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Load environment variables from a .env file if it exists
+	if _, err := os.Stat(".env"); err == nil {
+		err := godotenv.Load(".env")
+		if err != nil {
+			log.Fatalf("Error loading .env file: %v", err)
+		}
 	}
+
+	config := map[string]string{
+		"TWITCH_CLIENT_ID":              os.Getenv("TWITCH_CLIENT_ID"),
+		"SPOTIFY_ID":                    os.Getenv("SPOTIFY_ID"),
+		"SPOTIFY_SECRET":                os.Getenv("SPOTIFY_SECRET"),
+		"SPOTIFY_REDIRECT_URI":          os.Getenv("SPOTIFY_REDIRECT_URI"),
+		"DISCORD_BOT_TOKEN":             os.Getenv("DISCORD_BOT_TOKEN"),
+		"DISCORD_LISTENING_CHANNEL_IDS": os.Getenv("DISCORD_LISTENING_CHANNEL_IDS"),
+	}
+	for key, value := range config {
+		if value == "" {
+			log.Fatalf("Missing environment variable: %s", key)
+		}
+	}
+
+	// I want the loglevel to be configurable dynamically via HTTP request - but initially set to info
+	loglevel.Set(slog.LevelInfo)
+	slogHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: &loglevel})
+	slog.SetDefault(slog.New(slogHandler))
 
 	// first start an HTTP server
-	http.HandleFunc("/callback", completeAuth)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Got request for:", r.URL.String())
+	http.HandleFunc("/callback", internal.CompleteAuth)
+	http.HandleFunc("POST /loglevel/{level}", func(w http.ResponseWriter, r *http.Request) {
+		level := r.PathValue("level")
+		if level == "" {
+			http.Error(w, "Missing log level in URL path", http.StatusBadRequest)
+			return
+		}
+
+		var newLevel slog.Level
+		switch strings.ToLower(level) {
+		case "debug":
+			newLevel = slog.LevelDebug
+		case "info":
+			newLevel = slog.LevelInfo
+		case "warn", "warning":
+			newLevel = slog.LevelWarn
+		case "error":
+			newLevel = slog.LevelError
+		default:
+			http.Error(w, "Invalid log level", http.StatusBadRequest)
+			return
+		}
+
+		loglevel.Set(newLevel)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "Log level set to %s", newLevel.String())
 	})
 	go func() {
 		err := http.ListenAndServe(":8080", nil)
@@ -189,132 +87,119 @@ func main() {
 		}
 	}()
 
-	cmd := &cli.Command{
-		Name:  "isitstreamablebot",
-		Usage: "Check if a song is streamable on Twitch",
-		Commands: []*cli.Command{
-			{
-				Name:  "bot",
-				Usage: "Start a discord bot to listen for song requests",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
+	listeningChannelIDs := strings.Split(config["DISCORD_LISTENING_CHANNEL_IDS"], ",")
 
-					// Here you would start your Discord bot
-					fmt.Println("Starting Discord bot...")
+	url := internal.SpotifyAuth.AuthURL(internal.SpotifyState)
+	fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
+	// wait for auth to complete
+	client := <-internal.SpotifyChannel
 
-					return nil
-				},
-			},
-			{
-				Name:  "link",
-				Usage: "Check if a spotify link is streamable on Twitch",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					link := cmd.Args().First()
-					if link == "" {
-						return fmt.Errorf("usage: %s <link>", cmd.Name)
-					}
-
-					// Extract Spotify ID from the link
-					parts := strings.Split(link, "/")
-					if len(parts) < 2 {
-						return fmt.Errorf("invalid link format")
-					}
-					spotifyID := parts[len(parts)-1]
-					if strings.Contains(spotifyID, "?") {
-						spotifyID = strings.Split(spotifyID, "?")[0]
-					}
-
-					url := auth.AuthURL(state)
-					fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
-
-					// wait for auth to complete
-					client := <-ch
-
-					// Here you would check if the song is streamable using the Spotify API
-					trackID := spotify.ID(spotifyID)
-					track, err := client.GetTrack(context.Background(), trackID)
-					if err != nil {
-						log.Fatalf("Error getting track: %v", err)
-						return nil
-					}
-					if track == nil {
-						log.Println("Track not found.")
-						return nil
-					}
-
-					fmt.Printf("Track: %s\n", track.Name)
-
-					// Send the request
-					response, err := sendRequest(track.Name)
-					if err != nil {
-						log.Fatalf("Error: %v", err)
-					}
-
-					for _, r := range response {
-						if len(r.Data.SearchDJCatalog.Edges) == 0 {
-							log.Println("No results found.")
-							return nil
-						}
-
-						// Render the table
-						renderTable(r.Data.SearchDJCatalog.Edges)
-
-						log.Printf("Catalog Last Updated At: %s\n", r.Data.SearchDJCatalog.CatalogLastUpdatedAt)
-					}
-
-					return nil
-				},
-			},
-			{
-				Name:  "song",
-				Usage: "Check if a song is streamable on Twitch",
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					args := cmd.Args().Slice()
-					if len(args) < 1 {
-						return fmt.Errorf("usage: %s <song title>", cmd.Name)
-					}
-					songTitle := strings.Join(args, " ")
-
-					// Send the request
-					response, err := sendRequest(songTitle)
-					if err != nil {
-						log.Fatalf("Error: %v", err)
-					}
-
-					for _, r := range response {
-						if len(r.Data.SearchDJCatalog.Edges) == 0 {
-							log.Println("No results found.")
-							return nil
-						}
-
-						// Render the table
-						renderTable(r.Data.SearchDJCatalog.Edges)
-
-						log.Printf("Catalog Last Updated At: %s\n", r.Data.SearchDJCatalog.CatalogLastUpdatedAt)
-					}
-					return nil
-				},
-			},
-		},
-	}
-
-	if err := cmd.Run(context.Background(), os.Args); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func completeAuth(w http.ResponseWriter, r *http.Request) {
-	tok, err := auth.Token(r.Context(), state, r)
+	discord, err := discordgo.New("Bot " + config["DISCORD_BOT_TOKEN"])
 	if err != nil {
-		http.Error(w, "Couldn't get token", http.StatusForbidden)
-		log.Fatal(err)
-	}
-	if st := r.FormValue("state"); st != state {
-		http.NotFound(w, r)
-		log.Fatalf("State mismatch: %s != %s\n", st, state)
+		log.Fatalf("error creating Discord session: %v", err)
 	}
 
-	// use the token to get an authenticated client
-	client := spotify.New(auth.Client(r.Context(), tok))
-	fmt.Fprintf(w, "Login Completed!")
-	ch <- client
+	slog.Info("Starting Discord bot...")
+	_ = discord.AddHandler(func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		if m.Author.ID == s.State.User.ID {
+			return
+		}
+
+		// Check if the message is posted in a channel we listen on
+		isListeningChannel := false
+		for _, channelID := range listeningChannelIDs {
+			if m.ChannelID == strings.TrimSpace(channelID) {
+				isListeningChannel = true
+				break
+			}
+		}
+
+		if !isListeningChannel {
+			return
+		}
+
+		if internal.HasSpotifyLink(m.Content) {
+			links := internal.ExtractSpotifyLinksFromText(m.Content)
+			for _, link := range links {
+				spotifyID := internal.ExtractSpotifyTrackIDFromLink(link)
+				slog.Info("Extracted", "SpotifyID", spotifyID)
+				s.MessageReactionAdd(m.ChannelID, m.ID, "⏳")
+
+				trackID := spotify.ID(spotifyID)
+				track, err := client.GetTrack(context.Background(), trackID)
+				if err != nil {
+					slog.Error("Spotify error", "err", err)
+					return
+				}
+				if track == nil {
+					slog.Error("Track not found on Spotify")
+					return
+				}
+
+				response, err := twitch.SendRequest(track.Name)
+				if err != nil {
+					slog.Error("TwitchDJCatalog error", "err", err)
+					return
+				}
+
+				for _, r := range response {
+					if len(r.Data.SearchDJCatalog.Edges) == 0 {
+						slog.Error("No results found.")
+						return
+					}
+
+					messages := []string{"Twich DJ Catalog Results for \"" + track.Name + "\":"}
+					for _, edge := range r.Data.SearchDJCatalog.Edges {
+						state := "✅"
+						if edge.Node.IsBlockedTrack {
+							state = "❌"
+						}
+
+						artists := []string{}
+						for _, artist := range edge.Node.Artists {
+							artists = append(artists, artist.Name)
+						}
+						sort.Strings(artists)
+
+						indent := ""
+						if track.Name == edge.Node.Title {
+							spotifyDuration := int(track.Duration / 1000)
+							nodeDuration := int(edge.Node.Duration)
+							if spotifyDuration == nodeDuration {
+								// At this point we know that this is the requested track - so we
+								// remove the loading reaction and add the state reaction
+								// and indent the message in the list
+								s.MessageReactionRemove(m.ChannelID, m.ID, "⏳", s.State.User.ID)
+								s.MessageReactionAdd(m.ChannelID, m.ID, state)
+								indent = ">   "
+							}
+						}
+
+						durationMinutes := int(edge.Node.Duration) / 60
+						durationSeconds := int(edge.Node.Duration) % 60
+						messages = append(messages, fmt.Sprintf(
+							"%s%s: %s - %s - %s - %dm %ds",
+							indent,
+							state,
+							edge.Node.Title,
+							strings.Join(artists, ", "),
+							strings.Join(edge.Node.Genres, ", "),
+							durationMinutes,
+							durationSeconds,
+						))
+					}
+
+					s.ChannelMessageSendReply(m.ChannelID, strings.Join(messages, "\n"), m.Reference())
+				}
+			}
+		}
+	})
+	err = discord.Open()
+	if err != nil {
+		log.Fatalf("error opening connection: %v", err)
+	}
+
+	<-ctx.Done()
+	slog.Info("Stopping Discord bot...")
+	discord.Close()
 }
