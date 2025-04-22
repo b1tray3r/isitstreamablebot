@@ -3,7 +3,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = ["link", "https://open.spotify.com/track/2ruAuKmUaKRru1Kwam0M8R?si=c5a7a62c9d9049cd"]
+  args_bin = []
   bin = "./tmp/main"
   cmd = "go build -o ./tmp/main ."
   delay = 1000
