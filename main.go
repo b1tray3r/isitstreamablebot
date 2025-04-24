@@ -126,7 +126,7 @@ func main() {
 				s.MessageReactionAdd(m.ChannelID, m.ID, "⏳")
 
 				trackID := spotify.ID(spotifyID)
-				track, err := client.GetTrack(context.Background(), trackID)
+				track, err := client.GetTrack(ctx, trackID)
 				if err != nil {
 					slog.Error("Spotify error", "err", err)
 					return
