@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -16,13 +15,14 @@ import (
 type DiscordBot struct {
 	Session       *discordgo.Session
 	SpotifyClient *spotify.Client
+	Version       string
 
 	Commands []*discordgo.ApplicationCommand
 
 	ChannelFilter []string
 }
 
-func NewDiscordBot(token string, channelIDs []string) (*DiscordBot, error) {
+func NewDiscordBot(token, version string, channelIDs []string) (*DiscordBot, error) {
 	dg, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, fmt.Errorf("error creating Discord session: %w", err)
@@ -42,6 +42,7 @@ func NewDiscordBot(token string, channelIDs []string) (*DiscordBot, error) {
 	bot := &DiscordBot{
 		Session:       dg,
 		SpotifyClient: nil,
+		Version:       version,
 		ChannelFilter: channelIDs,
 		Commands:      commands,
 	}
@@ -66,21 +67,10 @@ func (b *DiscordBot) SlashCommandHandler(s *discordgo.Session, i *discordgo.Inte
 
 	switch i.ApplicationCommandData().Name {
 	case "version":
-		var gitCommit string
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, setting := range info.Settings {
-				if setting.Key == "vcs.revision" {
-					gitCommit = setting.Value
-				}
-			}
-		}
-		if gitCommit == "" {
-			gitCommit = "unknown"
-		}
 		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
-				Content: "Git commit: " + gitCommit,
+				Content: "Version: " + b.Version,
 			},
 		})
 	default:

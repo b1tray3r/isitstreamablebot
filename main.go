@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/b1tray3r/isitstreamablebot/internal"
@@ -20,6 +21,29 @@ func main() {
 	defer cancel()
 
 	loglevel.Set(slog.LevelDebug)
+
+	var gitCommit string
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				gitCommit = setting.Value
+			}
+		}
+	}
+	if gitCommit == "" {
+		gitCommit = "unknown"
+	}
+	if _, err := os.Stat("/VERSION"); err == nil {
+		versionData, err := os.ReadFile("/VERSION")
+		if err != nil {
+			log.Fatalf("Error reading /VERSION file: %v", err)
+		}
+		gitCommit = strings.TrimSpace(string(versionData))
+		if err != nil {
+			log.Fatalf("Error reading /VERSION file: %v", err)
+		}
+		slog.Info("Application version", "version", strings.TrimSpace(string(versionData)))
+	}
 
 	if _, err := os.Stat(".env"); err == nil {
 		err := godotenv.Load(".env")
@@ -45,7 +69,7 @@ func main() {
 	listeningChannelIDs := strings.Split(config["DISCORD_LISTENING_CHANNEL_IDS"], ",")
 	client := internal.NewSpotifyClient()
 
-	discordbot, err := internal.NewDiscordBot(config["DISCORD_BOT_TOKEN"], listeningChannelIDs)
+	discordbot, err := internal.NewDiscordBot(config["DISCORD_BOT_TOKEN"], gitCommit, listeningChannelIDs)
 	if err != nil {
 		log.Fatalf("error creating Discord bot: %v", err)
 	}
