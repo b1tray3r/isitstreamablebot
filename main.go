@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -22,10 +21,11 @@ var (
 )
 
 func main() {
+	loglevel.Set(slog.LevelDebug)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Load environment variables from a .env file if it exists
 	if _, err := os.Stat(".env"); err == nil {
 		err := godotenv.Load(".env")
 		if err != nil {
@@ -47,52 +47,9 @@ func main() {
 		}
 	}
 
-	// I want the loglevel to be configurable dynamically via HTTP request - but initially set to info
-	loglevel.Set(slog.LevelInfo)
-	slogHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: &loglevel})
-	slog.SetDefault(slog.New(slogHandler))
-
-	// first start an HTTP server
-	http.HandleFunc("/callback", internal.CompleteAuth)
-	http.HandleFunc("POST /loglevel/{level}", func(w http.ResponseWriter, r *http.Request) {
-		level := r.PathValue("level")
-		if level == "" {
-			http.Error(w, "Missing log level in URL path", http.StatusBadRequest)
-			return
-		}
-
-		var newLevel slog.Level
-		switch strings.ToLower(level) {
-		case "debug":
-			newLevel = slog.LevelDebug
-		case "info":
-			newLevel = slog.LevelInfo
-		case "warn", "warning":
-			newLevel = slog.LevelWarn
-		case "error":
-			newLevel = slog.LevelError
-		default:
-			http.Error(w, "Invalid log level", http.StatusBadRequest)
-			return
-		}
-
-		loglevel.Set(newLevel)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "Log level set to %s", newLevel.String())
-	})
-	go func() {
-		err := http.ListenAndServe(":8080", nil)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	listeningChannelIDs := strings.Split(config["DISCORD_LISTENING_CHANNEL_IDS"], ",")
 
-	url := internal.SpotifyAuth.AuthURL(internal.SpotifyState)
-	fmt.Println("Please log in to Spotify by visiting the following page in your browser:", url)
-	// wait for auth to complete
-	client := <-internal.SpotifyChannel
+	client := internal.NewSpotifyClient()
 
 	discord, err := discordgo.New("Bot " + config["DISCORD_BOT_TOKEN"])
 	if err != nil {
@@ -105,7 +62,6 @@ func main() {
 			return
 		}
 
-		// Check if the message is posted in a channel we listen on
 		isListeningChannel := false
 		for _, channelID := range listeningChannelIDs {
 			if m.ChannelID == strings.TrimSpace(channelID) {
@@ -113,7 +69,6 @@ func main() {
 				break
 			}
 		}
-
 		if !isListeningChannel {
 			return
 		}
@@ -128,7 +83,7 @@ func main() {
 				trackID := spotify.ID(spotifyID)
 				track, err := client.GetTrack(ctx, trackID)
 				if err != nil {
-					slog.Error("Spotify error", "err", err)
+					slog.Error("Spotify error", "err", err, "trackID", spotifyID)
 					return
 				}
 				if track == nil {
@@ -148,7 +103,7 @@ func main() {
 						return
 					}
 
-					messages := []string{"Twich DJ Catalog Results for \"" + track.Name + "\":"}
+					messages := []string{"Twitch DJ Catalog Results for \"" + track.Name + "\":"}
 					for _, edge := range r.Data.SearchDJCatalog.Edges {
 						state := "✅"
 						if edge.Node.IsBlockedTrack {
@@ -166,9 +121,6 @@ func main() {
 							spotifyDuration := int(track.Duration / 1000)
 							nodeDuration := int(edge.Node.Duration)
 							if spotifyDuration == nodeDuration {
-								// At this point we know that this is the requested track - so we
-								// remove the loading reaction and add the state reaction
-								// and indent the message in the list
 								s.MessageReactionRemove(m.ChannelID, m.ID, "⏳", s.State.User.ID)
 								s.MessageReactionAdd(m.ChannelID, m.ID, state)
 								indent = ">   "

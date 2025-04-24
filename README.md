@@ -46,12 +46,6 @@ The ID used for login.
 
 The secret used for the login.
 
-##### SPOTIFY_REDIRECT_URI
-
-Spotify needs a callback url where the user is redirected to.
-Spotify does not allow HTTP in combination with `localhost`, but the loopback address (127.0.0.1) does still work.
-All other FQDN need HTTPS, therefore the URI can define this here.
-
 #### Discord
 
 ##### DISCORD_BOT_TOKEN
