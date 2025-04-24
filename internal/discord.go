@@ -33,6 +33,18 @@ func NewDiscordBot(token, version string, channelIDs []string) (*DiscordBot, err
 			Name:        "version",
 			Description: "Replies with the version of the bot.",
 		},
+		{
+			Name:        "check",
+			Description: "Check if a track is in the Twitch DJ catalog.",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "title",
+					Description: "The title of the track to check.",
+					Required:    true,
+				},
+			},
+		},
 	}
 
 	if err := dg.Open(); err != nil {
@@ -48,6 +60,7 @@ func NewDiscordBot(token, version string, channelIDs []string) (*DiscordBot, err
 	}
 
 	for _, command := range commands {
+		slog.Info("Registering command", "name", command.Name)
 		_, err := dg.ApplicationCommandCreate(dg.State.User.ID, "", command)
 		if err != nil {
 			return nil, fmt.Errorf("error creating command %s: %w", command.Name, err)
@@ -71,6 +84,60 @@ func (b *DiscordBot) SlashCommandHandler(s *discordgo.Session, i *discordgo.Inte
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
 			Data: &discordgo.InteractionResponseData{
 				Content: "Version: " + b.Version,
+			},
+		})
+	case "check":
+		if len(i.ApplicationCommandData().Options) == 0 {
+			slog.Error("No options provided")
+			return
+		}
+		if i.ApplicationCommandData().Options[0].Type != discordgo.ApplicationCommandOptionString {
+			slog.Error("Invalid option type")
+			return
+		}
+		if i.ApplicationCommandData().Options[0].Name != "title" {
+			slog.Error("Invalid option name")
+			return
+		}
+		if i.ApplicationCommandData().Options[0].StringValue() == "" {
+			slog.Error("Empty track name")
+			return
+		}
+		trackName := i.ApplicationCommandData().Options[0].StringValue()
+
+		response, err := twitch.SendRequest(trackName)
+		if err != nil {
+			slog.Error("TwitchDJCatalog error", "err", err)
+			return
+		}
+
+		slog.Debug("TwitchDJCatalog response", "response", response)
+		if len(response) == 0 {
+			slog.Error("No response from Twitch DJ Catalog")
+			return
+		}
+
+		messages := []string{"Twitch DJ Catalog Results for \"" + trackName + "\":"}
+		for _, r := range response {
+			if len(r.Data.SearchDJCatalog.Edges) == 0 {
+				slog.Error("No results found.")
+				return
+			}
+
+			for _, edge := range r.Data.SearchDJCatalog.Edges {
+				state := "✅"
+				if edge.Node.IsBlockedTrack {
+					state = "❌"
+				}
+
+				messages = append(messages, renderDiscordMessage(edge, state, ""))
+			}
+		}
+
+		s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: strings.Join(messages, "\n"),
 			},
 		})
 	default:
@@ -131,12 +198,6 @@ func (b *DiscordBot) TwitchCatalogCheckHandler(s *discordgo.Session, m *discordg
 						state = "❌"
 					}
 
-					artists := []string{}
-					for _, artist := range edge.Node.Artists {
-						artists = append(artists, artist.Name)
-					}
-					sort.Strings(artists)
-
 					indent := ""
 					if track.Name == edge.Node.Title {
 						spotifyDuration := int(track.Duration / 1000)
@@ -148,22 +209,32 @@ func (b *DiscordBot) TwitchCatalogCheckHandler(s *discordgo.Session, m *discordg
 						}
 					}
 
-					durationMinutes := int(edge.Node.Duration) / 60
-					durationSeconds := int(edge.Node.Duration) % 60
-					messages = append(messages, fmt.Sprintf(
-						"%s%s: %s - %s - %s - %dm %ds",
-						indent,
-						state,
-						edge.Node.Title,
-						strings.Join(artists, ", "),
-						strings.Join(edge.Node.Genres, ", "),
-						durationMinutes,
-						durationSeconds,
-					))
+					messages = append(messages, renderDiscordMessage(edge, state, indent))
 				}
 
 				s.ChannelMessageSendReply(m.ChannelID, strings.Join(messages, "\n"), m.Reference())
 			}
 		}
 	}
+}
+
+func renderDiscordMessage(edge twitch.TwitchSongNode, state, indent string) string {
+	artists := []string{}
+	for _, artist := range edge.Node.Artists {
+		artists = append(artists, artist.Name)
+	}
+	sort.Strings(artists)
+
+	durationMinutes := int(edge.Node.Duration) / 60
+	durationSeconds := int(edge.Node.Duration) % 60
+	return fmt.Sprintf(
+		"%s%s: %s - %s - %s - %dm %ds",
+		indent,
+		state,
+		edge.Node.Title,
+		strings.Join(artists, ", "),
+		strings.Join(edge.Node.Genres, ", "),
+		durationMinutes,
+		durationSeconds,
+	)
 }

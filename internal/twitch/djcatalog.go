@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/sagikazarmark/slog-shim"
 )
 
 // PersistedQuery represents the persisted query details
@@ -93,6 +95,8 @@ func SendRequest(songTitle string) ([]TwitchResponse, error) {
 			},
 		},
 	}
+
+	slog.Debug("TwitchDJCatalog payload", "payload", payloadData)
 
 	payload, err := json.Marshal(payloadData)
 	if err != nil {
