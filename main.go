@@ -2,27 +2,22 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"os"
 	"runtime/debug"
 	"strings"
 
-	"github.com/b1tray3r/isitstreamablebot/internal"
+	"github.com/b1tray3r/isitstreamablebot/internal/discord"
+	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
 var (
-	loglevel = slog.LevelVar{}
+	loglevel  = slog.LevelVar{}
+	gitCommit string
 )
 
-func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	loglevel.Set(slog.LevelDebug)
-
-	var gitCommit string
+func init() {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
 			if setting.Key == "vcs.revision" {
@@ -30,25 +25,32 @@ func main() {
 			}
 		}
 	}
-	if gitCommit == "" {
-		gitCommit = "unknown"
-	}
+
 	if _, err := os.Stat("/VERSION"); err == nil {
 		versionData, err := os.ReadFile("/VERSION")
 		if err != nil {
-			log.Fatalf("Error reading /VERSION file: %v", err)
+			panic(err)
 		}
 		gitCommit = strings.TrimSpace(string(versionData))
 		if err != nil {
-			log.Fatalf("Error reading /VERSION file: %v", err)
+			panic(err)
 		}
-		slog.Info("Application version", "version", strings.TrimSpace(string(versionData)))
 	}
+
+	loglevel.Set(slog.LevelDebug)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: &loglevel,
+	})))
+}
+
+func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	if _, err := os.Stat(".env"); err == nil {
 		err := godotenv.Load(".env")
 		if err != nil {
-			log.Fatalf("Error loading .env file: %v", err)
+			panic(err)
 		}
 	}
 
@@ -58,26 +60,49 @@ func main() {
 		"SPOTIFY_SECRET":                os.Getenv("SPOTIFY_SECRET"),
 		"SPOTIFY_REDIRECT_URI":          os.Getenv("SPOTIFY_REDIRECT_URI"),
 		"DISCORD_BOT_TOKEN":             os.Getenv("DISCORD_BOT_TOKEN"),
-		"DISCORD_LISTENING_CHANNEL_IDS": os.Getenv("DISCORD_LISTENING_CHANNEL_IDS"),
+		"DISCORD_WHITELIST_GUILD_IDS":   os.Getenv("DISCORD_WHITELIST_GUILD_IDS"),
+		"DISCORD_WHITELIST_CHANNEL_IDS": os.Getenv("DISCORD_WHITELIST_CHANNEL_IDS"),
 	}
 	for key, value := range config {
 		if value == "" {
-			log.Fatalf("Missing environment variable: %s", key)
+			panic("Missing environment variable: " + key)
 		}
 	}
 
-	listeningChannelIDs := strings.Split(config["DISCORD_LISTENING_CHANNEL_IDS"], ",")
-	client := internal.NewSpotifyClient()
+	slog.Info("Starting bot", "version", gitCommit)
 
-	discordbot, err := internal.NewDiscordBot(config["DISCORD_BOT_TOKEN"], gitCommit, listeningChannelIDs)
+	guildBouncer := discord.NewGuildBouncer(
+		strings.Split(config["DISCORD_WHITELIST_GUILD_IDS"], ","),
+	)
+
+	channelBouncer := discord.NewChannelBouncer(
+		strings.Split(config["DISCORD_WHITELIST_CHANNEL_IDS"], ","),
+	)
+
+	session, err := discordgo.New("Bot " + config["DISCORD_BOT_TOKEN"])
 	if err != nil {
-		log.Fatalf("error creating Discord bot: %v", err)
+		slog.Error("Error creating Discord session", "error", err)
+		return
 	}
-	discordbot.SpotifyClient = client
 
-	slog.Info("Starting Discord bot...")
+	if err := session.Open(); err != nil {
+		slog.Error("Error opening Discord session", "error", err)
+		return
+	}
+
+	discordbot, err := discord.NewBot(
+		guildBouncer,
+		channelBouncer,
+		session,
+	)
+	if err != nil {
+		slog.Error("Error creating Discord bot", "error", err)
+		return
+	}
+
+	slog.Info("DiscordBot running")
 
 	<-ctx.Done()
-	slog.Info("Stopping Discord bot...")
-	discordbot.Session.Close()
+	slog.Info("Stopping DiscordBot...")
+	discordbot.Shutdown()
 }
