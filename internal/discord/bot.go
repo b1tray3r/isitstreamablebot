@@ -1,9 +1,5 @@
 package discord
 
-import (
-	"github.com/bwmarrin/discordgo"
-)
-
 type Bouncer interface {
 	check(ID string) bool
 }
@@ -49,10 +45,10 @@ func (b *ChannelBouncer) check(ID string) bool {
 type Bot struct {
 	guildBouncer   Bouncer
 	channelBouncer Bouncer
-	session        *discordgo.Session
+	session        *Session
 }
 
-func NewBot(guildBouncer Bouncer, channelBouncer Bouncer, session *discordgo.Session) (*Bot, error) {
+func NewBot(guildBouncer Bouncer, channelBouncer Bouncer, session *Session) (*Bot, error) {
 	return &Bot{
 		guildBouncer:   guildBouncer,
 		channelBouncer: channelBouncer,
@@ -63,8 +59,8 @@ func NewBot(guildBouncer Bouncer, channelBouncer Bouncer, session *discordgo.Ses
 func (b *Bot) Shutdown() {
 	if b.session != nil {
 		b.session.Close()
+		b.session = nil
 	}
-	b.session = nil
 }
 
 func (b *Bot) IsGuildAllowed(guildID string) bool {

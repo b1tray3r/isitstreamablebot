@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/b1tray3r/isitstreamablebot/internal/discord"
-	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
@@ -79,14 +78,22 @@ func main() {
 		strings.Split(config["DISCORD_WHITELIST_CHANNEL_IDS"], ","),
 	)
 
-	session, err := discordgo.New("Bot " + config["DISCORD_BOT_TOKEN"])
+	slog.Debug("Guild Bouncer", "guilds", guildBouncer)
+	slog.Debug("Channel Bouncer", "channels", channelBouncer)
+
+	session, err := discord.NewSession(
+		config["DISCORD_BOT_TOKEN"],
+		[]discord.CommandHandler{
+			discord.NewSlashCommandHandler(
+				[]discord.CommandHandler{
+					discord.NewVersionCommandHandler(gitCommit),
+					discord.NewDJSongCheckCommandHandler(config["TWITCH_CLIENT_ID"]),
+				},
+			),
+		},
+	)
 	if err != nil {
 		slog.Error("Error creating Discord session", "error", err)
-		return
-	}
-
-	if err := session.Open(); err != nil {
-		slog.Error("Error opening Discord session", "error", err)
 		return
 	}
 
