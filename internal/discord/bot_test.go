@@ -44,7 +44,10 @@ func TestBot_IsChannelAllowed(t *testing.T) {
 }
 
 func TestBot_Shutdown(t *testing.T) {
-	session := &discordgo.Session{}
+	session := &Session{
+		session:  &discordgo.Session{},
+		commands: make([]*discordgo.ApplicationCommand, 0),
+	}
 	bot, _ := NewBot(nil, nil, session)
 
 	bot.Shutdown()
