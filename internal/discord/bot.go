@@ -1,5 +1,12 @@
 package discord
 
+const (
+	WATCHLIST_ADD    = "watchlist_add"
+	WATCHLIST_REMOVE = "watchlist_remove"
+	WATCHLIST_VIEW   = "watchlist_view"
+	WATCHLIST_CLEAR  = "watchlist_clear"
+)
+
 type Bouncer interface {
 	check(ID string) bool
 }
@@ -16,7 +23,7 @@ func NewGuildBouncer(guildIDs []string) *GuildBouncer {
 	return &GuildBouncer{guildIDs: guildIDMap}
 }
 
-func (b *GuildBouncer) check(ID string) bool {
+func (b *GuildBouncer) Check(ID string) bool {
 	if _, ok := b.guildIDs[ID]; ok {
 		return true
 	}
@@ -35,44 +42,9 @@ func NewChannelBouncer(channelIDs []string) *ChannelBouncer {
 	return &ChannelBouncer{channelIDs: channelIDMap}
 }
 
-func (b *ChannelBouncer) check(ID string) bool {
+func (b *ChannelBouncer) Check(ID string) bool {
 	if _, ok := b.channelIDs[ID]; ok {
 		return true
 	}
 	return false
-}
-
-type Bot struct {
-	guildBouncer   Bouncer
-	channelBouncer Bouncer
-	session        *Session
-}
-
-func NewBot(guildBouncer Bouncer, channelBouncer Bouncer, session *Session) (*Bot, error) {
-	return &Bot{
-		guildBouncer:   guildBouncer,
-		channelBouncer: channelBouncer,
-		session:        session,
-	}, nil
-}
-
-func (b *Bot) Shutdown() {
-	if b.session != nil {
-		b.session.Close()
-		b.session = nil
-	}
-}
-
-func (b *Bot) IsGuildAllowed(guildID string) bool {
-	if b.guildBouncer != nil {
-		return b.guildBouncer.check(guildID)
-	}
-	return true
-}
-
-func (b *Bot) IsChannelAllowed(channelID string) bool {
-	if b.channelBouncer != nil {
-		return b.channelBouncer.check(channelID)
-	}
-	return true
 }
