@@ -3,22 +3,26 @@ package discord
 import (
 	"fmt"
 
+	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler"
 	"github.com/bwmarrin/discordgo"
 	"github.com/sagikazarmark/slog-shim"
 )
 
+// CommandHandler is an interface for handling Discord commands.
 type Session struct {
 	session  *discordgo.Session
 	commands []*discordgo.ApplicationCommand
 }
 
+// CommandFuncHandler is an interface for handling command functions.
 func (s *Session) Close() {
 	if s.session != nil {
 		s.session.Close()
 	}
 }
 
-func NewSession(token string, handlers []CommandHandler) (*Session, error) {
+// NewSession creates a new Discord session with the given token and command handlers.
+func NewSession(token string, commandHandler []handler.CommandHandler, messageHandler []handler.MessageHandler) (*Session, error) {
 	ds, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, err
@@ -28,15 +32,19 @@ func NewSession(token string, handlers []CommandHandler) (*Session, error) {
 		return nil, err
 	}
 
-	for _, handler := range handlers {
-		command := handler.GetCommand()
-		if command != nil {
-			slog.Debug("Registering command", "command", command.Name, "description", command.Description)
-			if _, err := ds.ApplicationCommandCreate(ds.State.User.ID, "", command); err != nil {
-				return nil, err
+	for _, handler := range commandHandler {
+		for _, command := range handler.GetCommands() {
+			if command != nil {
+				slog.Debug("Registering command", "command", command.Name, "description", command.Description)
+				ds.ApplicationCommandCreate(ds.State.User.ID, "", command)
 			}
 		}
 		slog.Debug("Registering handler", "handlerType", fmt.Sprintf("%T", handler))
+		ds.AddHandler(handler.Handle)
+	}
+
+	for _, handler := range messageHandler {
+		slog.Debug("Registering message/interaction handler", "handlerType", fmt.Sprintf("%T", handler))
 		ds.AddHandler(handler.Handle)
 	}
 
