@@ -11,6 +11,7 @@ import (
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler"
 	commandhandler "github.com/b1tray3r/isitstreamablebot/internal/discord/handler/command"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/message"
+	"github.com/b1tray3r/isitstreamablebot/internal/watchlist"
 	"github.com/joho/godotenv"
 )
 
@@ -94,6 +95,8 @@ func main() {
 		return true
 	}
 
+	wl := watchlist.NewWatchlist()
+
 	session, err := discord.NewSession(
 		config["DISCORD_BOT_TOKEN"],
 		[]handler.CommandHandler{
@@ -108,6 +111,7 @@ func main() {
 		[]handler.MessageHandler{
 			message.NewButtonHandler(
 				[]handler.MessageHandler{
+					message.NewWatchlistHandler(wl, discord.WATCHLIST_ADD),
 				},
 			),
 		},
