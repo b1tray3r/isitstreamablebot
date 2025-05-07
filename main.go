@@ -8,6 +8,9 @@ import (
 	"strings"
 
 	"github.com/b1tray3r/isitstreamablebot/internal/discord"
+	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler"
+	commandhandler "github.com/b1tray3r/isitstreamablebot/internal/discord/handler/command"
+	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/message"
 	"github.com/joho/godotenv"
 )
 
@@ -16,6 +19,7 @@ var (
 	gitCommit string
 )
 
+// init initializes the logger and reads the version from the build info or VERSION file.
 func init() {
 	if info, ok := debug.ReadBuildInfo(); ok {
 		for _, setting := range info.Settings {
@@ -78,16 +82,32 @@ func main() {
 		strings.Split(config["DISCORD_WHITELIST_CHANNEL_IDS"], ","),
 	)
 
-	slog.Debug("Guild Bouncer", "guilds", guildBouncer)
-	slog.Debug("Channel Bouncer", "channels", channelBouncer)
+	bouncerFunc := func(guildID, channelID string) bool {
+		if !guildBouncer.Check(guildID) {
+			slog.Info("Guild bouncer check failed", "guildID", guildID)
+			return false
+		}
+		if !channelBouncer.Check(channelID) {
+			slog.Info("Channel bouncer check failed", "channelID", channelID)
+			return false
+		}
+		return true
+	}
 
 	session, err := discord.NewSession(
 		config["DISCORD_BOT_TOKEN"],
-		[]discord.CommandHandler{
-			discord.NewSlashCommandHandler(
-				[]discord.CommandHandler{
-					discord.NewVersionCommandHandler(gitCommit),
-					discord.NewDJSongCheckCommandHandler(config["TWITCH_CLIENT_ID"]),
+		[]handler.CommandHandler{
+			commandhandler.NewSlashCommandHandler(
+				[]handler.CommandHandler{
+					commandhandler.NewVersionCommandHandler(gitCommit),
+					commandhandler.NewDJSongCheckCommandHandler(config["TWITCH_CLIENT_ID"], bouncerFunc),
+					commandhandler.NewListWatchlistCommandHandler(wl),
+				},
+			),
+		},
+		[]handler.MessageHandler{
+			message.NewButtonHandler(
+				[]handler.MessageHandler{
 				},
 			),
 		},
@@ -97,19 +117,9 @@ func main() {
 		return
 	}
 
-	discordbot, err := discord.NewBot(
-		guildBouncer,
-		channelBouncer,
-		session,
-	)
-	if err != nil {
-		slog.Error("Error creating Discord bot", "error", err)
-		return
-	}
-
 	slog.Info("DiscordBot running")
 
 	<-ctx.Done()
 	slog.Info("Stopping DiscordBot...")
-	discordbot.Shutdown()
+	session.Close()
 }
