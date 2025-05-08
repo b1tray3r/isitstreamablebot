@@ -22,7 +22,7 @@ func (s *Session) Close() {
 }
 
 // NewSession creates a new Discord session with the given token and command handlers.
-func NewSession(token string, commandHandler []handler.CommandHandler, messageHandler []handler.MessageHandler) (*Session, error) {
+func NewSession(token string, commandHandler []handler.CommandHandler, interactionHandler []handler.InteractionHandler, messageHandler []handler.MessageHandler) (*Session, error) {
 	ds, err := discordgo.New("Bot " + token)
 	if err != nil {
 		return nil, err
@@ -43,8 +43,13 @@ func NewSession(token string, commandHandler []handler.CommandHandler, messageHa
 		ds.AddHandler(handler.Handle)
 	}
 
+	for _, handler := range interactionHandler {
+		slog.Debug("Registering interaction handler", "handlerType", fmt.Sprintf("%T", handler))
+		ds.AddHandler(handler.Handle)
+	}
+
 	for _, handler := range messageHandler {
-		slog.Debug("Registering message/interaction handler", "handlerType", fmt.Sprintf("%T", handler))
+		slog.Debug("Registering message handler", "handlerType", fmt.Sprintf("%T", handler))
 		ds.AddHandler(handler.Handle)
 	}
 
