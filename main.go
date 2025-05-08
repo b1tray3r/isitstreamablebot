@@ -7,9 +7,11 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/b1tray3r/isitstreamablebot/internal"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler"
 	commandhandler "github.com/b1tray3r/isitstreamablebot/internal/discord/handler/command"
+	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/interaction"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/message"
 	"github.com/b1tray3r/isitstreamablebot/internal/watchlist"
 	"github.com/joho/godotenv"
@@ -108,12 +110,15 @@ func main() {
 				},
 			),
 		},
-		[]handler.MessageHandler{
-			message.NewButtonHandler(
-				[]handler.MessageHandler{
-					message.NewWatchlistHandler(wl, discord.WATCHLIST_ADD),
+		[]handler.InteractionHandler{
+			interaction.NewButtonHandler(
+				[]handler.InteractionHandler{
+					interaction.NewWatchlistHandler(wl, discord.WATCHLIST_ADD),
 				},
 			),
+		},
+		[]handler.MessageHandler{
+			message.NewSpotifyCheckHandler(internal.NewSpotifyClient()),
 		},
 	)
 	if err != nil {

@@ -1,4 +1,4 @@
-package message
+package interaction
 
 import (
 	"log/slog"

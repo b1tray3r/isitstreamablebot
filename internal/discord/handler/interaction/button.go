@@ -1,4 +1,4 @@
-package message
+package interaction
 
 import (
 	"log/slog"
@@ -10,12 +10,12 @@ import (
 
 // ButtonHandler is a handler for button interactions.
 type ButtonHandler struct {
-	handlers map[string]handler.MessageHandler
+	handlers map[string]handler.InteractionHandler
 }
 
 // NewButtonHandler creates a new ButtonHandler with the given handlers.
-func NewButtonHandler(handlers []handler.MessageHandler) *ButtonHandler {
-	handlersMap := make(map[string]handler.MessageHandler)
+func NewButtonHandler(handlers []handler.InteractionHandler) *ButtonHandler {
+	handlersMap := make(map[string]handler.InteractionHandler)
 	for _, handler := range handlers {
 		handlersMap[handler.GetCustomID()] = handler
 	}
