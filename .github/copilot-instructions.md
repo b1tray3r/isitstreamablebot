@@ -1,4 +1,4 @@
-Always generete ideomatic golang code.
+Always generate ideomatic golang code.
 Write comments as full sentences, starting with the name of the entity being described, to enhance clarity and documentation quality.
 Pass `context.Context` as the first parameter to functions that require it, and avoid embedding `Context` within structs.
 Prefer declaring nil slices using `var s []T` over empty slices like `s := []T{}` to adhere to idiomatic Go practices.
