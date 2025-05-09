@@ -14,13 +14,28 @@ func TestExtractSpotifyLinkFromText(t *testing.T) {
 	}{
 		{
 			name:     "Single Spotify link",
+			text:     "Look at this: https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
+			expected: "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
+		},
+		{
+			name:     "Single Spotify link",
+			text:     "Look at this: https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84 what a banger",
+			expected: "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
+		},
+		{
+			name:     "Single Spotify link",
 			text:     "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84 what a banger",
+			expected: "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
+		},
+		{
+			name:     "Single Spotify link",
+			text:     "Look at this: https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
 			expected: "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
 		},
 		{
 			name:     "Multiple Spotify links",
 			text:     "Here are two songs: https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84 and https://open.spotify.com/track/1a2b3c4d5e6f7g8h9i0jklmnopqrstuvwx?si=1234567890abcdef",
-			expected: "",
+			expected: "https://open.spotify.com/track/0WVgnZcUUvQVoaa2gEnv3Q?si=5e37c0a62f894f84",
 		},
 		{
 			name:     "No Spotify links",

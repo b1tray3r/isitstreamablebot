@@ -16,7 +16,7 @@ var (
 	SpotifyChannel = make(chan *spotify.Client)
 	SpotifyState   = "isitstreamablebot"
 
-	spotifyLinkRegex = regexp.MustCompile(`^https://open\.spotify\.com(/intl-[a-z]{2})?/track/([a-zA-Z0-9]+)(\?si=[a-zA-Z0-9]+)?`)
+	spotifyLinkRegex = regexp.MustCompile(`https://open\.spotify\.com(/intl-[a-z]{2})?/track/([a-zA-Z0-9]+)(\?si=[a-zA-Z0-9]+)?`)
 )
 
 func NewSpotifyClient() *spotify.Client {
