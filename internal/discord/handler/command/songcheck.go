@@ -121,7 +121,7 @@ func (h *DJSongCheckCommandHandler) Handle(s *discordgo.Session, i *discordgo.In
 			content += " by " + requestedArtist
 		}
 		if edge.Node.IsBlockedTrack {
-			content += " is ** not streamable! ** " + state
+			content += "❌ **Not Streamable!** " + edge.Node.Title
 		}
 		err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
