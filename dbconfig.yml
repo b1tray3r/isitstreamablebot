@@ -1,0 +1,11 @@
+development:
+  dialect: sqlite3
+  datasource: ./data/bot.db
+  dir: ./sql/schemas/
+  overrides:
+  - go_type: "sql.NullInt64"
+    db_type: "integer"
+    null: true
+  - go_type: "sql.NullString"
+    db_type: "text"
+    null: true
