@@ -1,6 +1,7 @@
 package interaction
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -21,19 +22,36 @@ func NewWatchlistHandler(watchlist *watchlist.Watchlist, customID string) *Watch
 }
 
 func (h *WatchlistHandler) Handle(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	id := strings.TrimPrefix(i.Message.ID, h.customID)
+	id := strings.TrimPrefix(i.MessageComponentData().CustomID, h.customID)
 
 	slog.Info("Adding to watchlist", "id", id)
-	h.watchlist.Add(id)
-	slog.Debug("Watchlist after adding", "watchlist", h.watchlist.List())
+	song, err := h.watchlist.Add(i.Member.User.ID, id)
+	if err != nil {
+		slog.Error("Failed to add to watchlist", "error", err)
+		if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: "Failed to add to watchlist: " + err.Error(),
+			},
+		}); err != nil {
+			slog.Error("Failed to send interaction response", "error", err)
+		}
+		return
+	}
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	songs, err := h.watchlist.List(i.Member.User.ID)
+	if err != nil {
+		slog.Error("Failed to get watchlist", "error", err)
+		return
+	}
+	slog.Debug("Watchlist after adding", "watchlist", songs)
+
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Added to watchlist: " + id,
+			Content: "Added to watchlist: " + fmt.Sprintf("%s - %s (%ds)", song.Title, song.Artists, song.Duration),
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		slog.Error("Failed to send interaction response", "error", err)
 	}
 }

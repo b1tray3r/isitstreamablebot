@@ -2,24 +2,29 @@ package message
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	"log/slog"
-	"sort"
 	"strings"
+	"time"
 
 	"github.com/b1tray3r/isitstreamablebot/internal"
+	"github.com/b1tray3r/isitstreamablebot/internal/discord"
+	"github.com/b1tray3r/isitstreamablebot/internal/store"
 	"github.com/b1tray3r/isitstreamablebot/internal/twitch"
+	pkg "github.com/b1tray3r/isitstreamablebot/pkg/db"
 	"github.com/bwmarrin/discordgo"
 	"github.com/zmb3/spotify/v2"
 )
 
 type SpotifyCheckHandler struct {
-	client *spotify.Client
+	client  *spotify.Client
+	storage store.Storager
 }
 
-func NewSpotifyCheckHandler(client *spotify.Client) *SpotifyCheckHandler {
+func NewSpotifyCheckHandler(client *spotify.Client, storage store.Storager) *SpotifyCheckHandler {
 	return &SpotifyCheckHandler{
-		client: client,
+		client:  client,
+		storage: storage,
 	}
 }
 
@@ -59,57 +64,106 @@ func (h *SpotifyCheckHandler) Handle(s *discordgo.Session, m *discordgo.MessageC
 			return
 		}
 
-		found := "❓"
-		songs := []string{}
+		songList := []pkg.Song{}
 		for _, edge := range r.Data.SearchDJCatalog.Edges {
-			state := "✅"
+			streamable := int64(1)
 			if edge.Node.IsBlockedTrack {
-				state = "❌"
+				streamable = int64(0)
 			}
 
-			if track.Name == edge.Node.Title {
+			artists := ""
+			for _, artist := range track.Artists {
+				artists += artist.Name + ", "
+			}
+			artists = strings.TrimSuffix(artists, ", ")
+
+			songList = append(songList, pkg.Song{
+				ID:           edge.Node.ID,
+				Title:        edge.Node.Title,
+				Artists:      artists,
+				Duration:     int64(edge.Node.Duration),
+				IsStreamable: streamable,
+			})
+		}
+
+		var found *pkg.Song
+		alternatives := []pkg.Song{}
+		for _, song := range songList {
+			if song.Title == track.Name {
 				spotifyDuration := int(track.Duration / 1000)
-				nodeDuration := int(edge.Node.Duration)
+				nodeDuration := int(song.Duration)
 				if spotifyDuration == nodeDuration {
-					found = state
+					found = &song
 					break
 				}
+			} else {
+				alternatives = append(alternatives, song)
 			}
-
-			songs = append(songs, renderDiscordMessage(edge, state, ""))
 		}
 
 		s.MessageReactionRemove(m.ChannelID, m.ID, "⏳", s.State.User.ID)
-		if found != "❓" {
-			s.MessageReactionAdd(m.ChannelID, m.ID, found)
+		if found != nil {
+			if found.IsStreamable == 0 {
+				s.MessageReactionAdd(m.ChannelID, m.ID, "❌")
+				song, err := h.storage.GetQueries().GetSongById(context.Background(), found.ID)
+				if err != nil {
+					if err != sql.ErrNoRows {
+						slog.Error("Error getting song from database", "err", err)
+						return
+					}
+				}
+
+				if song.ID == "" { // not yet in the database
+					song, err = h.storage.GetQueries().InsertSong(context.Background(),
+						pkg.InsertSongParams{
+							ID:           found.ID,
+							Title:        found.Title,
+							Artists:      found.Artists,
+							Duration:     int64(found.Duration),
+							IsStreamable: found.IsStreamable,
+							RequestTime:  time.Now(),
+						},
+					)
+					if err != nil {
+						slog.Error("Error inserting song into database", "err", err)
+						return
+					}
+				}
+
+				// Create a message with the button
+				message := discordgo.MessageSend{
+					Content: "This song is blocked. You can add it to your watchlist and I'll inform you when it becomes available.",
+					Components: []discordgo.MessageComponent{
+						discordgo.ActionsRow{
+							Components: []discordgo.MessageComponent{
+								discordgo.Button{
+									Label:    "Watch this song",
+									Style:    discordgo.SuccessButton,
+									CustomID: discord.WATCHLIST_ADD + song.ID,
+								},
+							},
+						},
+					},
+				}
+
+				// Send the message with the button
+				if _, err := s.ChannelMessageSendComplex(m.ChannelID, &message); err != nil {
+					slog.Error("Error sending message with button", "err", err)
+					return
+				}
+
+				return // Early return after sending the message
+			}
+
+			s.MessageReactionAdd(m.ChannelID, m.ID, "✅") // Song is streamable
+
 		} else {
 			s.MessageReactionAdd(m.ChannelID, m.ID, "❓")
-			content := fmt.Sprintf("Twitch results:\n%s", strings.Join(songs, "\n"))
+			content := discord.RenderDiscordMessage("Other Twitch results", alternatives)
 			if _, err := s.ChannelMessageSendReply(m.ChannelID, content, m.Reference()); err != nil {
 				slog.Error("Error sending message", "err", err)
 				return
 			}
 		}
 	}
-}
-
-func renderDiscordMessage(edge twitch.TwitchSongNode, state, indent string) string {
-	artists := []string{}
-	for _, artist := range edge.Node.Artists {
-		artists = append(artists, artist.Name)
-	}
-	sort.Strings(artists)
-
-	durationMinutes := int(edge.Node.Duration) / 60
-	durationSeconds := int(edge.Node.Duration) % 60
-	return fmt.Sprintf(
-		"%s%s: %s - %s - %s - %dm %ds",
-		indent,
-		state,
-		edge.Node.Title,
-		strings.Join(artists, ", "),
-		strings.Join(edge.Node.Genres, ", "),
-		durationMinutes,
-		durationSeconds,
-	)
 }

@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"embed"
 	"log/slog"
 	"os"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/b1tray3r/isitstreamablebot/internal"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord"
@@ -13,9 +16,16 @@ import (
 	commandhandler "github.com/b1tray3r/isitstreamablebot/internal/discord/handler/command"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/interaction"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler/message"
+	"github.com/b1tray3r/isitstreamablebot/internal/store"
 	"github.com/b1tray3r/isitstreamablebot/internal/watchlist"
 	"github.com/joho/godotenv"
+	migrate "github.com/rubenv/sql-migrate"
+
+	_ "github.com/mattn/go-sqlite3"
 )
+
+//go:embed sql/schemas/*
+var dbMigrations embed.FS
 
 var (
 	loglevel  = slog.LevelVar{}
@@ -75,8 +85,26 @@ func main() {
 		}
 	}
 
-	slog.Info("Starting bot", "version", gitCommit)
+	slog.Info("Preparing database")
+	db, err := sql.Open("sqlite3", "./data/bot.db?mode=memory&cache=shared")
+	if err != nil {
+		slog.Error("Error opening database", "error", err)
+		return
+	}
+	migrations := migrate.EmbedFileSystemMigrationSource{
+		FileSystem: dbMigrations,
+		Root:       "sql/schemas",
+	}
+	n, err := migrate.Exec(db, "sqlite3", migrations, migrate.Up)
+	if err != nil {
+		slog.Error("Error applying migrations", "error", err)
+		return
+	}
+	slog.Debug("Applied migrations", "count", n)
 
+	store := store.NewStore(db)
+
+	slog.Info("Starting bot", "version", gitCommit)
 	guildBouncer := discord.NewGuildBouncer(
 		strings.Split(config["DISCORD_WHITELIST_GUILD_IDS"], ","),
 	)
@@ -97,7 +125,7 @@ func main() {
 		return true
 	}
 
-	wl := watchlist.NewWatchlist()
+	wl := watchlist.NewWatchlist(store)
 
 	session, err := discord.NewSession(
 		config["DISCORD_BOT_TOKEN"],
@@ -113,12 +141,15 @@ func main() {
 		[]handler.InteractionHandler{
 			interaction.NewButtonHandler(
 				[]handler.InteractionHandler{
-					interaction.NewWatchlistHandler(wl, discord.WATCHLIST_ADD),
+					interaction.NewWatchlistHandler(
+						wl,
+						discord.WATCHLIST_ADD,
+					),
 				},
 			),
 		},
 		[]handler.MessageHandler{
-			message.NewSpotifyCheckHandler(internal.NewSpotifyClient()),
+			message.NewSpotifyCheckHandler(internal.NewSpotifyClient(), store),
 		},
 	)
 	if err != nil {
@@ -127,6 +158,10 @@ func main() {
 	}
 
 	slog.Info("DiscordBot running")
+
+	slog.Info("Starting background song checker")
+	checker := watchlist.NewChecker(store, 2*time.Second)
+	checker.StartWatchlistChecker(ctx)
 
 	<-ctx.Done()
 	slog.Info("Stopping DiscordBot...")

@@ -1,6 +1,7 @@
 package commandhandler
 
 import (
+	"github.com/b1tray3r/isitstreamablebot/internal/discord"
 	"github.com/b1tray3r/isitstreamablebot/internal/discord/handler"
 	"github.com/b1tray3r/isitstreamablebot/internal/watchlist"
 	"github.com/bwmarrin/discordgo"
@@ -26,18 +27,17 @@ func (h *ListWatchlistCommandHandler) Handle(s *discordgo.Session, i *discordgo.
 		return
 	}
 
-	wl := ""
-	for _, element := range h.watchlist.List() {
-		wl += element + "\n"
+	songs, err := h.watchlist.List(i.Member.User.ID)
+	if err != nil {
+		slog.Error("Failed to get watchlist", "error", err)
 	}
 
-	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
-			Content: "Watchlist:\n" + wl,
+			Content: discord.RenderDiscordMessage("Your watchlist", *songs),
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		slog.Error("Failed to respond to interaction", "err", err)
 		return
 	}
