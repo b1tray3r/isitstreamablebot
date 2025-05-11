@@ -1,5 +1,11 @@
 package discord
 
+import (
+	"fmt"
+
+	pkg "github.com/b1tray3r/isitstreamablebot/pkg/db"
+)
+
 const (
 	WATCHLIST_ADD    = "watchlist_add"
 	WATCHLIST_REMOVE = "watchlist_remove"
@@ -47,4 +53,29 @@ func (b *ChannelBouncer) Check(ID string) bool {
 		return true
 	}
 	return false
+}
+
+func RenderDiscordMessage(title string, songs []pkg.Song) string {
+	content := title + ":\n"
+
+	for _, song := range songs {
+		durationMinutes := int(song.Duration) / 60
+		durationSeconds := int(song.Duration) % 60
+
+		state := "❌"
+		if song.IsStreamable == 1 {
+			state = "✅"
+		}
+
+		content += fmt.Sprintf(
+			"%s: %s - %s - %dm %ds\n",
+			state,
+			song.Title,
+			song.Artists,
+			durationMinutes,
+			durationSeconds,
+		)
+	}
+
+	return content
 }
