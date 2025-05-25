@@ -59,46 +59,47 @@ func (h *SpotifyCheckHandler) Handle(s *discordgo.Session, m *discordgo.MessageC
 			return
 		}
 
-		if len(r.Data.SearchDJCatalog.Edges) == 0 {
-			slog.Error("No results found.")
+		songList := r.GetSongList()
+		if songList == nil {
+			slog.Error("No songs found in TwitchDJCatalog")
 			return
 		}
 
-		songList := []pkg.Song{}
-		for _, edge := range r.Data.SearchDJCatalog.Edges {
+		songs := []pkg.Song{}
+		for _, songnode := range songList {
 			streamable := int64(1)
-			if edge.Node.IsBlockedTrack {
+			if songnode.IsBlockedTrack {
 				streamable = int64(0)
 			}
 
 			artists := ""
-			for _, artist := range track.Artists {
+			for _, artist := range songnode.Artists {
 				artists += artist.Name + ", "
 			}
 			artists = strings.TrimSuffix(artists, ", ")
 
-			songList = append(songList, pkg.Song{
-				ID:           edge.Node.ID,
-				Title:        edge.Node.Title,
+			songs = append(songs, pkg.Song{
+				ID:           songnode.ID,
+				Title:        songnode.Title,
 				Artists:      artists,
-				Duration:     int64(edge.Node.Duration),
+				Duration:     int64(songnode.Duration),
 				IsStreamable: streamable,
 			})
 		}
 
 		var found *pkg.Song
 		alternatives := []pkg.Song{}
-		for _, song := range songList {
-			if song.Title == track.Name {
-				spotifyDuration := int(track.Duration / 1000)
-				nodeDuration := int(song.Duration)
-				if spotifyDuration == nodeDuration {
+		for _, song := range songs {
+			spotifyDuration := int(track.Duration / 1000)
+			nodeDuration := int(song.Duration)
+			if spotifyDuration == nodeDuration {
+				if song.Title == track.Name {
 					found = &song
-					break
+					continue
 				}
-			} else {
-				alternatives = append(alternatives, song)
 			}
+
+			alternatives = append(alternatives, song)
 		}
 
 		s.MessageReactionRemove(m.ChannelID, m.ID, "⏳", s.State.User.ID)
@@ -120,6 +121,7 @@ func (h *SpotifyCheckHandler) Handle(s *discordgo.Session, m *discordgo.MessageC
 							Title:        found.Title,
 							Artists:      found.Artists,
 							Duration:     int64(found.Duration),
+							MessageID:    m.ID,
 							IsStreamable: found.IsStreamable,
 							RequestTime:  time.Now(),
 						},
@@ -159,11 +161,30 @@ func (h *SpotifyCheckHandler) Handle(s *discordgo.Session, m *discordgo.MessageC
 
 		} else {
 			s.MessageReactionAdd(m.ChannelID, m.ID, "❓")
-			content := discord.RenderDiscordMessage("Other Twitch results", alternatives)
-			if _, err := s.ChannelMessageSendReply(m.ChannelID, content, m.Reference()); err != nil {
-				slog.Error("Error sending message", "err", err)
+			// SpotifyCheckHandler opens a thread for discussion and closes it after sending alternatives.
+			thread, err := s.MessageThreadStart(m.ChannelID, m.ID, "Alternative song results", 60)
+			if err != nil {
+				slog.Error("Error creating thread", "err", err)
 				return
 			}
+
+			// Send alternatives in the thread if any exist.
+			if len(alternatives) > 0 {
+				content := discord.RenderDiscordMessage("Other Twitch results", alternatives)
+				if _, err := s.ChannelMessageSend(thread.ID, content); err != nil {
+					slog.Error("Error sending alternatives to thread", "err", err)
+				}
+			}
+
+			defer func() {
+				// SpotifyCheckHandler closes the discussion thread after sending alternatives.
+				_, err := s.ChannelEditComplex(thread.ID, &discordgo.ChannelEdit{
+					Archived: func(b bool) *bool { return &b }(true),
+				})
+				if err != nil {
+					slog.Error("Error closing thread", "err", err)
+				}
+			}()
 		}
 	}
 }
