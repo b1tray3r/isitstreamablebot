@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/rubenv/sql-migrate v1.8.0
