@@ -15,6 +15,7 @@ type Song struct {
 	Duration     int64     `json:"duration"`
 	RequestTime  time.Time `json:"request_time"`
 	IsStreamable int64     `json:"is_streamable"`
+	MessageID    string    `json:"message_id"`
 }
 
 type Watchlist struct {

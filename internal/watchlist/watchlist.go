@@ -3,6 +3,7 @@ package watchlist
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/b1tray3r/isitstreamablebot/internal/store"
 	pkg "github.com/b1tray3r/isitstreamablebot/pkg/db"
@@ -27,13 +28,33 @@ func (w *Watchlist) Add(userID string, songID string) (*pkg.Song, error) {
 		return nil, fmt.Errorf("failed to get song: %w", err)
 	}
 
-	if song.ID != "" {
-		if _, err := w.store.GetQueries().WatchSong(context.Background(), pkg.WatchSongParams{
-			UserID: userID,
-			SongID: song.ID,
-		}); err != nil {
-			return nil, fmt.Errorf("failed to add song to watchlist: %w", err)
+	if song.ID == "" {
+		return nil, fmt.Errorf("song was never requested with ID. %s not found", songID)
+	}
+
+	watchlist, err := w.store.GetQueries().GetWatchListForUser(context.Background(), userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get watchlist for user: %w", err)
+	}
+
+	found := false
+	for _, s := range watchlist {
+		if s.ID == song.ID {
+			found = true
+			break
 		}
+	}
+
+	if found {
+		slog.Debug("Song already in watchlist", "songID", song.ID, "userID", userID)
+		return &song, nil
+	}
+
+	if _, err := w.store.GetQueries().WatchSong(context.Background(), pkg.WatchSongParams{
+		UserID: userID,
+		SongID: song.ID,
+	}); err != nil {
+		return nil, fmt.Errorf("failed to add song to watchlist: %w", err)
 	}
 
 	return &song, nil

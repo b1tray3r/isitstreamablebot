@@ -6,18 +6,22 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/b1tray3r/isitstreamablebot/internal/discord"
 	"github.com/b1tray3r/isitstreamablebot/internal/store"
+	"github.com/b1tray3r/isitstreamablebot/internal/twitch"
 	pkg "github.com/b1tray3r/isitstreamablebot/pkg/db"
 )
 
 type Checker struct {
 	store     store.Storager
+	session   *discord.Session
 	sleepTime time.Duration
 }
 
-func NewChecker(store store.Storager, sleepTime time.Duration) *Checker {
+func NewChecker(store store.Storager, session *discord.Session, sleepTime time.Duration) *Checker {
 	return &Checker{
-		store: store,
+		store:   store,
+		session: session,
 
 		sleepTime: sleepTime,
 	}
@@ -65,5 +69,31 @@ func (c *Checker) checkWatchlist(ctx context.Context) {
 
 // checkSong performs the necessary checks for a single song.
 func (c *Checker) checkSong(ctx context.Context, song pkg.Song) error {
+	if time.Since(song.RequestTime) < 3*24*time.Hour {
+		return nil
+	}
+
+	response, err := twitch.SendRequest(song.Title)
+	if err != nil {
+		log.Printf("Failed to send request for song %v: %v", song, err)
+		return err
+	}
+
+	if response != nil {
+		for _, edge := range response.Data.SearchDJCatalog.Edges {
+			if edge.Node.ID != song.ID {
+				continue
+			}
+
+			if !edge.Node.IsBlockedTrack {
+				// Song is no longer blocked, update the database.
+				if err := c.store.GetQueries().SetSongStreamable(ctx, song.ID); err != nil {
+					log.Printf("Failed to update song %v as streamable: %v", song.ID, err)
+					return err
+				}
+
+			}
+		}
+	}
 	return nil
 }

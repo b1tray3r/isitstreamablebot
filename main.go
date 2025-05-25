@@ -133,7 +133,7 @@ func main() {
 			commandhandler.NewSlashCommandHandler(
 				[]handler.CommandHandler{
 					commandhandler.NewVersionCommandHandler(gitCommit),
-					commandhandler.NewDJSongCheckCommandHandler(config["TWITCH_CLIENT_ID"], bouncerFunc),
+					commandhandler.NewDJSongCheckCommandHandler(config["TWITCH_CLIENT_ID"], store, bouncerFunc),
 					commandhandler.NewListWatchlistCommandHandler(wl),
 				},
 			),
@@ -160,7 +160,7 @@ func main() {
 	slog.Info("DiscordBot running")
 
 	slog.Info("Starting background song checker")
-	checker := watchlist.NewChecker(store, 2*time.Second)
+	checker := watchlist.NewChecker(store, session, 96*time.Hour)
 	checker.StartWatchlistChecker(ctx)
 
 	<-ctx.Done()
