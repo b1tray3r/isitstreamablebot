@@ -56,28 +56,49 @@ type TwitchArtist struct {
 	BlockListState string `json:"blockListState"`
 }
 
-// TwitchSongNode represents the song node in the response
+// TwitchSong represents the song details in the response
+type TwitchSong struct {
+	Cursor string         `json:"cursor"`
+	Node   TwitchSongNode `json:"node"`
+}
+
 type TwitchSongNode struct {
-	Cursor string `json:"cursor"`
-	Node   struct {
-		ID             string         `json:"id"`
-		Title          string         `json:"title"`
-		Artists        []TwitchArtist `json:"artists"`
-		Labels         []string       `json:"labels"`
-		IsBlockedTrack bool           `json:"isBlockedTrack"`
-		Genres         []string       `json:"genres"`
-		Duration       float64        `json:"duration"`
+	ID             string         `json:"id"`
+	Title          string         `json:"title"`
+	Artists        []TwitchArtist `json:"artists"`
+	Labels         []string       `json:"labels"`
+	IsBlockedTrack bool           `json:"isBlockedTrack"`
+	Genres         []string       `json:"genres"`
+	Duration       float64        `json:"duration"`
+}
+
+// GetArtists returns a comma-separated string of artist names
+func (t *TwitchSongNode) GetArtists() string {
+	artists := ""
+	for _, artist := range t.Artists {
+		artists += artist.Name + ", "
 	}
+	artists = artists[:len(artists)-2]
+	return artists
 }
 
 // TwitchResponse represents the structure of the response from Twitch
 type TwitchResponse struct {
 	Data struct {
 		SearchDJCatalog struct {
-			CatalogLastUpdatedAt string           `json:"catalogLastUpdatedAt"`
-			Edges                []TwitchSongNode `json:"edges"`
+			CatalogLastUpdatedAt string       `json:"catalogLastUpdatedAt"`
+			Edges                []TwitchSong `json:"edges"`
 		} `json:"searchDJCatalog"`
 	} `json:"data"`
+}
+
+// GetSongList extracts the song list from the Twitch response
+func (r *TwitchResponse) GetSongList() []TwitchSongNode {
+	songList := []TwitchSongNode{}
+	for _, edge := range r.Data.SearchDJCatalog.Edges {
+		songList = append(songList, edge.Node)
+	}
+	return songList
 }
 
 type TwitchDJCatalogRequest struct {
