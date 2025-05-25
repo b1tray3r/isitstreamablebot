@@ -39,13 +39,6 @@ func (h *WatchlistHandler) Handle(s *discordgo.Session, i *discordgo.Interaction
 		return
 	}
 
-	songs, err := h.watchlist.List(i.Member.User.ID)
-	if err != nil {
-		slog.Error("Failed to get watchlist", "error", err)
-		return
-	}
-	slog.Debug("Watchlist after adding", "watchlist", songs)
-
 	if err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
