@@ -60,3 +60,7 @@ func NewSession(token string, commandHandler []handler.CommandHandler, interacti
 
 	return session, nil
 }
+
+func (s *Session) GetSession() *discordgo.Session {
+	return s.session
+}
