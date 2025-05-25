@@ -11,7 +11,7 @@ import (
 )
 
 const getSongById = `-- name: GetSongById :one
-SELECT id, title, artists, duration, request_time, is_streamable FROM songs WHERE id = ?
+SELECT id, title, artists, duration, request_time, is_streamable, message_id FROM songs WHERE id = ?
 `
 
 func (q *Queries) GetSongById(ctx context.Context, id string) (Song, error) {
@@ -24,12 +24,13 @@ func (q *Queries) GetSongById(ctx context.Context, id string) (Song, error) {
 		&i.Duration,
 		&i.RequestTime,
 		&i.IsStreamable,
+		&i.MessageID,
 	)
 	return i, err
 }
 
 const insertSong = `-- name: InsertSong :one
-INSERT INTO songs (id, title, artists, duration, request_time, is_streamable) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, title, artists, duration, request_time, is_streamable
+INSERT INTO songs (id, title, artists, duration, request_time, is_streamable, message_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, title, artists, duration, request_time, is_streamable, message_id
 `
 
 type InsertSongParams struct {
@@ -39,6 +40,7 @@ type InsertSongParams struct {
 	Duration     int64     `json:"duration"`
 	RequestTime  time.Time `json:"request_time"`
 	IsStreamable int64     `json:"is_streamable"`
+	MessageID    string    `json:"message_id"`
 }
 
 func (q *Queries) InsertSong(ctx context.Context, arg InsertSongParams) (Song, error) {
@@ -49,6 +51,7 @@ func (q *Queries) InsertSong(ctx context.Context, arg InsertSongParams) (Song, e
 		arg.Duration,
 		arg.RequestTime,
 		arg.IsStreamable,
+		arg.MessageID,
 	)
 	var i Song
 	err := row.Scan(
@@ -58,6 +61,7 @@ func (q *Queries) InsertSong(ctx context.Context, arg InsertSongParams) (Song, e
 		&i.Duration,
 		&i.RequestTime,
 		&i.IsStreamable,
+		&i.MessageID,
 	)
 	return i, err
 }
@@ -68,5 +72,14 @@ DELETE FROM songs WHERE id = ?
 
 func (q *Queries) RemoveSong(ctx context.Context, id string) error {
 	_, err := q.exec(ctx, q.removeSongStmt, removeSong, id)
+	return err
+}
+
+const setSongStreamable = `-- name: SetSongStreamable :exec
+UPDATE songs SET is_streamable = 1 WHERE id = ?
+`
+
+func (q *Queries) SetSongStreamable(ctx context.Context, id string) error {
+	_, err := q.exec(ctx, q.setSongStreamableStmt, setSongStreamable, id)
 	return err
 }

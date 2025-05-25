@@ -33,6 +33,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.getUniqueSongsInWatchlistStmt, err = db.PrepareContext(ctx, getUniqueSongsInWatchlist); err != nil {
 		return nil, fmt.Errorf("error preparing query GetUniqueSongsInWatchlist: %w", err)
 	}
+	if q.getUsersForSongIDStmt, err = db.PrepareContext(ctx, getUsersForSongID); err != nil {
+		return nil, fmt.Errorf("error preparing query GetUsersForSongID: %w", err)
+	}
 	if q.getWatchListForUserStmt, err = db.PrepareContext(ctx, getWatchListForUser); err != nil {
 		return nil, fmt.Errorf("error preparing query GetWatchListForUser: %w", err)
 	}
@@ -44,6 +47,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	}
 	if q.removeSongFromWatchlistStmt, err = db.PrepareContext(ctx, removeSongFromWatchlist); err != nil {
 		return nil, fmt.Errorf("error preparing query RemoveSongFromWatchlist: %w", err)
+	}
+	if q.setSongStreamableStmt, err = db.PrepareContext(ctx, setSongStreamable); err != nil {
+		return nil, fmt.Errorf("error preparing query SetSongStreamable: %w", err)
 	}
 	if q.watchSongStmt, err = db.PrepareContext(ctx, watchSong); err != nil {
 		return nil, fmt.Errorf("error preparing query WatchSong: %w", err)
@@ -68,6 +74,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing getUniqueSongsInWatchlistStmt: %w", cerr)
 		}
 	}
+	if q.getUsersForSongIDStmt != nil {
+		if cerr := q.getUsersForSongIDStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing getUsersForSongIDStmt: %w", cerr)
+		}
+	}
 	if q.getWatchListForUserStmt != nil {
 		if cerr := q.getWatchListForUserStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing getWatchListForUserStmt: %w", cerr)
@@ -86,6 +97,11 @@ func (q *Queries) Close() error {
 	if q.removeSongFromWatchlistStmt != nil {
 		if cerr := q.removeSongFromWatchlistStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing removeSongFromWatchlistStmt: %w", cerr)
+		}
+	}
+	if q.setSongStreamableStmt != nil {
+		if cerr := q.setSongStreamableStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setSongStreamableStmt: %w", cerr)
 		}
 	}
 	if q.watchSongStmt != nil {
@@ -135,10 +151,12 @@ type Queries struct {
 	clearWatchlistStmt            *sql.Stmt
 	getSongByIdStmt               *sql.Stmt
 	getUniqueSongsInWatchlistStmt *sql.Stmt
+	getUsersForSongIDStmt         *sql.Stmt
 	getWatchListForUserStmt       *sql.Stmt
 	insertSongStmt                *sql.Stmt
 	removeSongStmt                *sql.Stmt
 	removeSongFromWatchlistStmt   *sql.Stmt
+	setSongStreamableStmt         *sql.Stmt
 	watchSongStmt                 *sql.Stmt
 }
 
@@ -149,10 +167,12 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		clearWatchlistStmt:            q.clearWatchlistStmt,
 		getSongByIdStmt:               q.getSongByIdStmt,
 		getUniqueSongsInWatchlistStmt: q.getUniqueSongsInWatchlistStmt,
+		getUsersForSongIDStmt:         q.getUsersForSongIDStmt,
 		getWatchListForUserStmt:       q.getWatchListForUserStmt,
 		insertSongStmt:                q.insertSongStmt,
 		removeSongStmt:                q.removeSongStmt,
 		removeSongFromWatchlistStmt:   q.removeSongFromWatchlistStmt,
+		setSongStreamableStmt:         q.setSongStreamableStmt,
 		watchSongStmt:                 q.watchSongStmt,
 	}
 }

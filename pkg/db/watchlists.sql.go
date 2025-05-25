@@ -19,7 +19,7 @@ func (q *Queries) ClearWatchlist(ctx context.Context, userID string) error {
 }
 
 const getUniqueSongsInWatchlist = `-- name: GetUniqueSongsInWatchlist :many
-SELECT DISTINCT songs.id, songs.title, songs.artists, songs.duration, songs.request_time, songs.is_streamable FROM watchlists JOIN songs ON watchlists.song_id = songs.id
+SELECT DISTINCT songs.id, songs.title, songs.artists, songs.duration, songs.request_time, songs.is_streamable, songs.message_id FROM watchlists JOIN songs ON watchlists.song_id = songs.id
 `
 
 func (q *Queries) GetUniqueSongsInWatchlist(ctx context.Context) ([]Song, error) {
@@ -38,6 +38,7 @@ func (q *Queries) GetUniqueSongsInWatchlist(ctx context.Context) ([]Song, error)
 			&i.Duration,
 			&i.RequestTime,
 			&i.IsStreamable,
+			&i.MessageID,
 		); err != nil {
 			return nil, err
 		}
@@ -52,8 +53,35 @@ func (q *Queries) GetUniqueSongsInWatchlist(ctx context.Context) ([]Song, error)
 	return items, nil
 }
 
+const getUsersForSongID = `-- name: GetUsersForSongID :many
+SELECT user_id FROM watchlists WHERE song_id = ?
+`
+
+func (q *Queries) GetUsersForSongID(ctx context.Context, songID string) ([]string, error) {
+	rows, err := q.query(ctx, q.getUsersForSongIDStmt, getUsersForSongID, songID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getWatchListForUser = `-- name: GetWatchListForUser :many
-SELECT songs.id, songs.title, songs.artists, songs.duration, songs.request_time, songs.is_streamable FROM watchlists JOIN songs ON watchlists.song_id = songs.id WHERE watchlists.user_id = ?
+SELECT songs.id, songs.title, songs.artists, songs.duration, songs.request_time, songs.is_streamable, songs.message_id FROM watchlists JOIN songs ON watchlists.song_id = songs.id WHERE watchlists.user_id = ?
 `
 
 func (q *Queries) GetWatchListForUser(ctx context.Context, userID string) ([]Song, error) {
@@ -72,6 +100,7 @@ func (q *Queries) GetWatchListForUser(ctx context.Context, userID string) ([]Son
 			&i.Duration,
 			&i.RequestTime,
 			&i.IsStreamable,
+			&i.MessageID,
 		); err != nil {
 			return nil, err
 		}
