@@ -6,7 +6,7 @@
 
 [![Go Version](https://img.shields.io/badge/go-1.24+-blue)](https://golang.org/)
 [![License](https://img.shields.io/github/license/b1tray3r/isitstreamablebot)](LICENSE)
-[![Docker Image](https://img.shields.io/badge/docker-ready-blue)](https://github.com/b1tray3r/isitstreamablebot/pkgs/container/isitstreamablebot)
+[![Docker Image](https://img.shields.io/badge/docker-ready-blue)](https://hub.docker.com/r/aborgardt/isitstreamablebot)
 
 isitstreamablebot is a Discord bot that checks if a song is streamable on Twitch DJ catalog. It supports Spotify track links and manual song queries, and allows users to maintain a watchlist for blocked songs. When a blocked song becomes available, the bot notifies users automatically.
 
