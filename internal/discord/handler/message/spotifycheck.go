@@ -93,10 +93,20 @@ func (h *SpotifyCheckHandler) Handle(s *discordgo.Session, m *discordgo.MessageC
 			spotifyDuration := int(track.Duration / 1000)
 			nodeDuration := int(song.Duration)
 			if spotifyDuration == nodeDuration {
-				if song.Title == track.Name {
-					found = &song
+				if song.Title != track.Name {
 					continue
 				}
+
+				trackArtists := ""
+				for _, artist := range track.Artists {
+					trackArtists += artist.Name + ", "
+				}
+				trackArtists = strings.TrimSuffix(trackArtists, ", ")
+				if song.Artists != trackArtists {
+					continue
+				}
+
+				found = &song
 			}
 
 			alternatives = append(alternatives, song)
