@@ -11,7 +11,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/zmb3/spotify/v2 v2.4.3
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
-	golang.org/x/oauth2 v0.31.0
+	golang.org/x/oauth2 v0.32.0
 )
 
 require (
