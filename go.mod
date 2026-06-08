@@ -6,7 +6,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/google/go-cmp v0.7.0
 	github.com/joho/godotenv v1.5.1
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.45
 	github.com/rubenv/sql-migrate v1.8.0
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/zmb3/spotify/v2 v2.4.3
